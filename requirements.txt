@@ -1,0 +1,13 @@
+flask
+flasgger
+pypdf2
+sentence-transformers
+faiss-cpu
+google-generativeai
+python-dotenv
+numpy
+flask-cors
+pdf2image
+pytesseract
+nltk
+pillow
