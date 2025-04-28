@@ -9,4 +9,8 @@ services:
       - .env
     volumes:
       - .:/app
-    restart: unless-stopped
+    networks:
+      - chat-ebook-network
+networks:
+  chat-ebook-network:
+    external: true
