@@ -30,8 +30,6 @@ def connect_elasticsearch():
             logger.info("Connected to Elasticsearch at %s:%s", ES_HOST, ES_PORT)
 
         logger.debug("Sending info request to verify connection")
-        info = es.info()
-        logger.info(f"Elasticsearch server version: {info['version']['number']}")
         return es
     except Exception as e:
         logger.error(f"Unexpected error connecting to Elasticsearch: {str(e)}")
