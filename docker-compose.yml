@@ -5,12 +5,32 @@ services:
     build: .
     ports:
       - "5000:5000"
+    depends_on:
+      - elasticsearch
     env_file:
       - .env
     volumes:
       - .:/app
     networks:
       - chat-ebook-network
+
+  elasticsearch:
+    image: elasticsearch:8.17.5
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    networks:
+      - chat-ebook-network
+
 networks:
   chat-ebook-network:
     external: true
+
+volumes:
+  esdata:
+    driver: local
