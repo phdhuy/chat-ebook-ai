@@ -11,4 +11,4 @@ pdf2image
 pytesseract
 nltk
 pillow
-elasticsearch
+elasticsearch==8.15.0
