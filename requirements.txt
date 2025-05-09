@@ -12,3 +12,4 @@ pytesseract
 nltk
 pillow
 elasticsearch==8.15.0
+python-logging-loki

@@ -6,7 +6,7 @@ from services.elasticsearch_service import get_embedding_dimension
 import tempfile
 import os
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chat-ebook-ai")
 
 def register_routes(app, es, embedder, model, ES_INDEX):
     @app.route('/upload', methods=['POST'])
