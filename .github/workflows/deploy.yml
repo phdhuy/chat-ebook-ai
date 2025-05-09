@@ -1,0 +1,24 @@
+name: Deploy to Prod
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Prod
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.CLOUD_HOST }}
+          username: ${{ secrets.CLOUD_USERNAME }}
+          password: ${{ secrets.CLOUD_PASSWORD }}
+          script: |
+            cd chat-ebook
+            cd chat-ebook-ai
+            docker-compose down
+            git pull origin main
+            docker-compose up --build -d
