@@ -59,7 +59,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             return jsonify({"error": "Query is required"}), 400
         try:
             q_vec = embedder.encode([q], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
-            k = 3
+            k = 5
             body = {
                 "size": k,
                 "query": {
@@ -67,7 +67,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                         "field": "embedding",
                         "query_vector": q_vec,
                         "k": k,
-                        "num_candidates": 100
+                        "num_candidates": 200
                     }
                 }
             }
@@ -76,15 +76,12 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             matched = [h['_source']['chunk'] for h in hits]
             scores = [h['_score'] for h in hits]
             ids = [int(h['_id']) for h in hits]
-            context = "\n\n".join([f"Chunk {i+1}: {c}" for i, c in enumerate(matched)])
+            context = "\n".join([f"- Excerpt {i + 1}: {c}" for i, c in enumerate(matched)])
             prompt = (
-                "You are an expert assistant answering questions based on provided document excerpts and your own knowledge. "
-                "First, review the context and, if it’s relevant, use it to inform your answer. "
-                "If the context is insufficient or unrelated to the question, acknowledge this and then answer fully using your general expertise. "
-                "Always provide a clear, accurate, and concise response.\n\n"
-                f"Context:\n{context}\n\n"
+                "You are an expert assistant. Provide an accurate and concise answer to the question, using the provided document excerpts if they are relevant. If the excerpts are not relevant, base your answer solely on your expertise.\n\n"
+                f"Document Excerpts:\n{context}\n\n"
                 f"Question: {q}\n\n"
-                "Answer:"
+                "Please think through the question step by step, considering the excerpts and your knowledge, before providing your answer.\n\n"
             )
             logger.info("Prompt: %s", prompt)
             response = model.generate_content(prompt)

@@ -72,4 +72,4 @@ def process_pdf(filepath, es, embedder, ES_INDEX):
         })
     bulk(es, actions)
     logger.info(f"Indexed {len(actions)} documents into '{ES_INDEX}'")
-    return len(chunks)  # Return number of chunks for the upload response
+    return len(chunks)
