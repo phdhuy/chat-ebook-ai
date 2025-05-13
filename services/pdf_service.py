@@ -1,4 +1,4 @@
-import PyPDF2
+import fitz
 from pdf2image import convert_from_path
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter
@@ -6,7 +6,7 @@ import nltk
 from elasticsearch.helpers import bulk
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chat-ebook-ai")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() == 'pdf'
@@ -22,23 +22,27 @@ def preprocess_image_for_ocr(image):
 def process_pdf(filepath, es, embedder, ES_INDEX):
     text = ""
     try:
-        with open(filepath, 'rb') as file:
-            reader = PyPDF2.PdfReader(file)
-            for page in reader.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
-        logger.info("Text extracted using PyPDF2")
+        doc = fitz.open(filepath)
+        for page in doc:
+            extracted = page.get_text()
+            if extracted:
+                text += extracted + "\n"
+        doc.close()
+        logger.info("Text extracted using PyMuPDF")
     except Exception as e:
-        logger.warning(f"PyPDF2 extraction failed: {e}")
+        logger.warning(f"PyMuPDF extraction failed: {e}")
+
     if not text.strip():
+        logger.info("No text extracted with PyMuPDF, attempting OCR")
         images = convert_from_path(filepath, dpi=300)
         for img in images:
             img = preprocess_image_for_ocr(img)
             text += pytesseract.image_to_string(img, config='--psm 6') + "\n"
         logger.info("Text extracted using OCR")
+
     if not text.strip():
         raise ValueError("No extractable text found in PDF.")
+
     text = ' '.join(text.split())
     sentences = nltk.sent_tokenize(text)
     chunk_size, overlap = 5, 2
@@ -50,8 +54,10 @@ def process_pdf(filepath, es, embedder, ES_INDEX):
             chunks.append(chunk)
         if end == len(sentences): break
     logger.info(f"Created {len(chunks)} chunks")
+
     embeds = embedder.encode(chunks, convert_to_tensor=False, normalize_embeddings=True)
     dimension = len(embeds[0])
+
     if not es.indices.exists(index=ES_INDEX):
         mapping = {
             "mappings": {
@@ -63,6 +69,7 @@ def process_pdf(filepath, es, embedder, ES_INDEX):
         }
         es.indices.create(index=ES_INDEX, body=mapping)
         logger.info(f"Created Elasticsearch index '{ES_INDEX}' with dims={dimension}")
+
     actions = []
     for i, vec in enumerate(embeds):
         actions.append({

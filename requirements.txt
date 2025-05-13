@@ -1,6 +1,6 @@
 flask
 flasgger
-pypdf2
+pymupdf
 sentence-transformers
 faiss-cpu
 google-generativeai

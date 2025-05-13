@@ -63,11 +63,26 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             body = {
                 "size": k,
                 "query": {
-                    "knn": {
-                        "field": "embedding",
-                        "query_vector": q_vec,
-                        "k": k,
-                        "num_candidates": 200
+                    "bool": {
+                        "should": [
+                            {
+                                "match": {
+                                    "chunk": {
+                                        "query": q,
+                                        "boost": 0.5  # optional: downweight lexical
+                                    }
+                                }
+                            },
+                            {
+                                "knn": {
+                                    "field": "embedding",
+                                    "query_vector": q_vec,
+                                    "k": k,
+                                    "num_candidates": 200,
+                                    "boost": 1.0  # optional: upweight semantic
+                                }
+                            }
+                        ]
                     }
                 }
             }
