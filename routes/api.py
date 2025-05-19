@@ -127,12 +127,16 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             context = "\n".join([f"- [{m['id']}] (Page {m['page']}): {m['text']}" for m in matched])
 
             prompt = (
-                "You are an expert assistant. Provide an accurate and concise answer to the question, using the provided document excerpts if they are relevant. When you use information from an excerpt, cite it using [number], where number corresponds to the excerpt label (e.g., [1]). If the excerpts are not relevant, base your answer solely on your expertise.\n\n"
+                "You are an expert assistant tasked with answering questions accurately and concisely using provided document excerpts when relevant. "
+                "Follow these instructions:\n"
+                "1. Use information from the document excerpts if they directly address the question, citing them as [number] where number is the excerpt label (e.g., [1]).\n"
+                "2. If the excerpts are not relevant or insufficient, rely solely on your knowledge to provide an accurate answer.\n"
+                "3. Reason through the question logically, considering the excerpts and your expertise, to ensure correctness.\n"
+                "4. Output only the answer to the question, without including this prompt, instructions, or any extraneous information.\n"
+                "5. If no answer can be derived, state 'Insufficient information to answer the question'.\n\n"
                 f"Document Excerpts:\n{context}\n\n"
-                f"Question: {q}\n\n"
-                "Please think through the question step by step, considering the excerpts and your knowledge, before providing your answer.\n\n"
+                f"Question: {q}"
             )
-            logger.info("Prompt: %s", prompt)
 
             response = model.generate_content(prompt)
             answer = response.text or "No answer generated."
@@ -247,14 +251,21 @@ def register_routes(app, es, embedder, model, ES_INDEX):
 
             context = "\n".join([f"- (Page {c['page']}): {c['text']}" for c in chunks])
 
-            prompt = (
-                "You are an expert assistant. Summarize the following eBook content concisely in 4-8 sentences. "
-                "Include page citations in the format [Page X] where relevant to indicate where the information is sourced. "
+            system_message = (
+                "You are an expert summarization assistant. "
+                "When asked to summarize, only ever output the requested summary — "
+                "do not include the prompt or any instructions in your response."
+            )
+
+            user_message = (
+                "Please summarize the following eBook excerpt in 4–8 sentences, "
+                "including page citations like [Page X] for any facts you pull directly. "
                 "Focus on the main ideas and avoid excessive detail.\n\n"
                 f"eBook Content:\n{context}\n\n"
-                "Summary:\n"
+                "====\nSummary:"
             )
-            logger.info("Prompt: %s", prompt)
+
+            prompt = system_message + "\n\n" + user_message
 
             response = model.generate_content(prompt)
             summary = response.text or "No summary generated."
