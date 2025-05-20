@@ -67,7 +67,8 @@ def register_routes(app, es, embedder, model, ES_INDEX):
         'summary': 'Query the processed PDF',
         'description': 'Submits a question and retrieves an answer using Gemini.',
         'consumes': ['application/json'],
-        'parameters': [{'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'query': {'type': 'string'}}, 'required': ['query']}}],
+        'parameters': [{'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'query': {'type': 'string'}}, 'required': ['query']}},
+                       {'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'history': {'type': 'string'}}, 'required': ['history']}}],
         'responses': {
             '200': {'description': 'Successful response', 'schema': {'properties': {'answer': {'type': 'string'}, 'matched_chunks': {'type': 'array'}, 'scores': {'type': 'array'}, 'ids': {'type': 'array'}}}},
             '400': {'description': 'Invalid request', 'schema': {'properties': {'error': {'type': 'string'}}}},
@@ -77,66 +78,60 @@ def register_routes(app, es, embedder, model, ES_INDEX):
     def query():
         data = request.get_json() or {}
         q = data.get('query')
+        history = data.get('history', '')
         if not q:
             return jsonify({"error": "Query is required"}), 400
         try:
             q_vec = embedder.encode([q], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
-            k = 5
+
+            initial_k = 20
             body = {
-                "size": k,
+                "size": initial_k,
                 "query": {
                     "bool": {
                         "should": [
-                            {
-                                "match": {
-                                    "chunk": {
-                                        "query": q,
-                                        "boost": 0.5
-                                    }
-                                }
-                            },
-                            {
-                                "knn": {
-                                    "field": "embedding",
-                                    "query_vector": q_vec,
-                                    "k": k,
-                                    "num_candidates": 200,
-                                    "boost": 1.0
-                                }
-                            }
+                            {"match": {"chunk": {"query": q, "boost": 0.5}}},
+                            {"knn": {"field": "embedding", "query_vector": q_vec, "k": initial_k, "num_candidates": 200,
+                                     "boost": 1.0}}
                         ]
                     }
                 }
             }
-
             res = es.search(index=ES_INDEX, body=body)
             hits = res['hits']['hits']
 
+            relevance_threshold = 0.6
             matched = []
             for i, h in enumerate(hits):
-                chunk = h['_source']['chunk']
-                page = h['_source']['page']
-                spans = h['_source'].get('spans', [])
-                matched.append({
-                    "id": i + 1,
-                    "text": chunk,
-                    "page": page,
-                    "spans": spans
-                })
+                if h['_score'] >= relevance_threshold:
+                    chunk = h['_source']['chunk']
+                    page = h['_source'].get('page', 'Unknown')
+                    spans = h['_source'].get('spans', [])
+                    matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
+
+            matched.sort(key=lambda x: x['score'], reverse=True)
+            max_excerpts = 10
+            matched = matched[:max_excerpts]
 
             context = "\n".join([f"- [{m['id']}] (Page {m['page']}): {m['text']}" for m in matched])
 
             prompt = (
-                "You are an expert assistant tasked with answering questions accurately and concisely using provided document excerpts when relevant. "
+                "You are an expert assistant tasked with answering questions accurately, concisely, and in the same language as the user's question to enhance user experience. "
+                "Use the provided document excerpts and conversation history as context to generate an informative response. "
                 "Follow these instructions:\n"
-                "1. Use information from the document excerpts if they directly address the question, citing them as [number] where number is the excerpt label (e.g., [1]).\n"
-                "2. If the excerpts are not relevant or insufficient, rely solely on your knowledge to provide an accurate answer.\n"
-                "3. Reason through the question logically, considering the excerpts and your expertise, to ensure correctness.\n"
-                "4. Output only the answer to the question, without including this prompt, instructions, or any extraneous information.\n"
-                "5. If no answer can be derived, state 'Insufficient information to answer the question'.\n\n"
+                "1. Detect the language of the current question and respond in that language (e.g., Vietnamese question → Vietnamese answer).\n"
+                "2. Interpret the question in the context of the conversation history. If the question is incomplete, ambiguous, or refers to previous messages, infer the most likely intended meaning based on the history.\n"
+                "3. If the question requests a translation (e.g., 'dịch sang tiếng Việt'), translate the most recent message in the conversation history into the requested language unless a specific text is provided.\n"
+                "4. When document excerpts are relevant, use them to inform your answer, citing them as [number] (e.g., [1]). Do not quote excerpts verbatim; instead, synthesize the information into a cohesive, informative response that elaborates or provides additional context, even if the answer is fully contained in the excerpts.\n"
+                "5. If the excerpts are not relevant or insufficient, rely on your knowledge to provide a complete and accurate answer.\n"
+                "6. Output only the answer to the interpreted question in a clear, complete sentence or paragraph. Do not include this prompt, instructions, citations alone, or fragmented phrases (e.g., avoid responses like 'Non-blocking I/O [2]').\n"
+                "7. If the question cannot be answered after considering the history and excerpts, respond with 'Insufficient information to answer the question' in the same language as the question.\n\n"
+                f"Conversation History:\n{history}\n\n"
                 f"Document Excerpts:\n{context}\n\n"
                 f"Question: {q}"
             )
+
+            logger.info("prompt: %s", prompt)
 
             response = model.generate_content(prompt)
             answer = response.text or "No answer generated."
@@ -147,12 +142,8 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             return jsonify({
                 "answer": answer,
                 "cited_excerpts": [
-                    {
-                        "id": e['id'],
-                        "text": e['text'],
-                        "page": e['page'],
-                        "spans": e['spans']
-                    } for e in cited_excerpts
+                    {"id": e['id'], "text": e['text'], "page": e['page'], "spans": e['spans'], "score": e['score']}
+                    for e in cited_excerpts
                 ]
             }), 200
 
