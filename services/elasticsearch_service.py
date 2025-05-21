@@ -2,7 +2,7 @@ from elasticsearch import Elasticsearch
 from config import ES_HOST, ES_API_KEY, ES_PORT, ES_USER, ES_PASS
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chat-ebook-ai")
 
 
 def connect_elasticsearch():
@@ -29,7 +29,6 @@ def connect_elasticsearch():
             es = Elasticsearch(**es_args)
             logger.info("Connected to Elasticsearch at %s:%s", ES_HOST, ES_PORT)
 
-        logger.debug("Sending info request to verify connection")
         return es
     except Exception as e:
         logger.error(f"Unexpected error connecting to Elasticsearch: {str(e)}")
