@@ -225,17 +225,11 @@ def register_routes(app, es, embedder, model, ES_INDEX):
         try:
             body = {
               "query": {
-                "match": {
+                "match_phrase": {
                   "conversation_id": conversation_id
                 }
               },
-              "sort": [
-                {
-                  "page": {
-                    "order": "asc"
-                  }
-                }
-              ]
+               "size": 1000
             }
             res = es.search(index=ES_INDEX, body=body)
             hits = res['hits']['hits']
