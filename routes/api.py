@@ -49,6 +49,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
                 file.save(tmp.name)
                 num_chunks = process_pdf(tmp.name, es, embedder, ES_INDEX, conversation_id)
+                logger.info("num_chunks: %s", num_chunks)
             return jsonify({
                 "message": "File indexed successfully",
                 "chunks": num_chunks,
@@ -264,6 +265,8 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             )
 
             prompt = system_message + "\n\n" + user_message
+
+            logger.info("prompt: %s", prompt)
 
             response = model.generate_content(prompt)
             summary = response.text or "No summary generated."
