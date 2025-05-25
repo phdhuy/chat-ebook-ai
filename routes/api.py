@@ -123,12 +123,52 @@ def register_routes(app, es, embedder, model, ES_INDEX):
         'summary': 'Query the processed PDF',
         'description': 'Submits a question and retrieves an answer using Gemini.',
         'consumes': ['application/json'],
-        'parameters': [{'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'query': {'type': 'string'}}, 'required': ['query']}},
-                       {'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'history': {'type': 'string'}}, 'required': ['history']}}],
+        'parameters': [
+            {
+                'name': 'body',
+                'in': 'body',
+                'required': True,
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'query': {'type': 'string'},
+                        'history': {'type': 'string'}
+                    },
+                    'required': ['query']
+                }
+            }
+        ],
         'responses': {
-            '200': {'description': 'Successful response', 'schema': {'properties': {'answer': {'type': 'string'}, 'matched_chunks': {'type': 'array'}, 'scores': {'type': 'array'}, 'ids': {'type': 'array'}}}},
-            '400': {'description': 'Invalid request', 'schema': {'properties': {'error': {'type': 'string'}}}},
-            '500': {'description': 'Error processing query', 'schema': {'properties': {'error': {'type': 'string'}}}}
+            '200': {
+                'description': 'Successful response',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'answer': {'type': 'string'},
+                        'matched_chunks': {'type': 'array', 'items': {'type': 'string'}},
+                        'scores': {'type': 'array', 'items': {'type': 'number'}},
+                        'ids': {'type': 'array', 'items': {'type': 'string'}}
+                    }
+                }
+            },
+            '400': {
+                'description': 'Invalid request',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string'}
+                    }
+                }
+            },
+            '500': {
+                'description': 'Error processing query',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string'}
+                    }
+                }
+            }
         }
     })
     def query():
@@ -156,7 +196,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             res = es.search(index=ES_INDEX, body=body)
             hits = res['hits']['hits']
 
-            relevance_threshold = 0.8
+            relevance_threshold = 2.5
             matched = []
             for i, h in enumerate(hits):
                 if h['_score'] >= relevance_threshold:
@@ -198,7 +238,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             return jsonify({
                 "answer": answer,
                 "cited_excerpts": [
-                    {"id": e['id'], "text": e['text'], "page": e['page'], "spans": e['spans'], "score": e['score']}
+                    {"id": e['id'], "text": e['text'], "page": e['page'], "score": e['score']}
                     for e in cited_excerpts
                 ]
             }), 200
