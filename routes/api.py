@@ -98,7 +98,8 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     "Summarize the following text in about 3 sentences, focusing on the main themes. "
                     "Then, generate five question prompts for user engagement, formatted on separate lines starting with '1.' and '2.'.\n"
                     "Provide the summary first, followed by a blank line, then the questions:\n\n"
-                    f"{full_text[:5000]}"
+                    "Detect the language of the current text below and respond in that language (e.g., Vietnamese text → Vietnamese answer).\n"
+                    f"{full_text[:1000]}"
                 )
 
                 response = model.generate_content(system_prompt)
@@ -155,7 +156,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             res = es.search(index=ES_INDEX, body=body)
             hits = res['hits']['hits']
 
-            relevance_threshold = 0.6
+            relevance_threshold = 0.8
             matched = []
             for i, h in enumerate(hits):
                 if h['_score'] >= relevance_threshold:
@@ -165,7 +166,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
 
             matched.sort(key=lambda x: x['score'], reverse=True)
-            max_excerpts = 10
+            max_excerpts = 7
             matched = matched[:max_excerpts]
 
             context = "\n".join([f"- [{m['id']}] (Page {m['page']}): {m['text']}" for m in matched])
