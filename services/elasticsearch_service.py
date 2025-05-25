@@ -43,3 +43,16 @@ def get_embedding_dimension(es, index):
     except Exception as e:
         logger.error("Failed to get embedding dimension: %s", e)
     return None
+
+def retrieve_full_text_from_es(conversation_id, es, index):
+    body = {
+        "query": {
+            "match_phrase": {
+                "conversation_id": conversation_id
+            }
+        },
+        "size": 1000
+    }
+    res = es.search(index=index, body=body)
+    chunks = [hit["_source"]["chunk"] for hit in res["hits"]["hits"]]
+    return " ".join(chunks)
