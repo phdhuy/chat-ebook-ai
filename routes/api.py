@@ -2,7 +2,7 @@ from flask import request, jsonify
 from flasgger import swag_from
 import logging
 from services.pdf_service import allowed_file, process_pdf
-from services.elasticsearch_service import get_embedding_dimension
+from services.elasticsearch_service import get_embedding_dimension, retrieve_full_text_from_es
 import tempfile
 import os
 import re
@@ -15,19 +15,56 @@ def register_routes(app, es, embedder, model, ES_INDEX):
     @swag_from({
         'tags': ['RAG Pipeline'],
         'summary': 'Upload a PDF file for processing',
-        'description': 'Uploads a PDF, extracts text, generates embeddings, and indexes in Elasticsearch with a conversation ID.',
+        'description': 'Uploads a PDF file, extracts its text, generates embeddings, and indexes the content in Elasticsearch using a conversation ID.',
         'consumes': ['multipart/form-data'],
         'parameters': [
-            {'name': 'file', 'in': 'formData', 'type': 'file', 'required': True},
-            {'name': 'conversation_id', 'in': 'formData', 'type': 'string', 'required': True,
-             'description': 'UUID of the conversation'}
+            {
+                'name': 'file',
+                'in': 'formData',
+                'type': 'file',
+                'required': True,
+                'description': 'The PDF file to upload for processing.'
+            },
+            {
+                'name': 'conversation_id',
+                'in': 'formData',
+                'type': 'string',
+                'required': True,
+                'description': 'UUID of the conversation to associate with the indexed content.',
+                'format': 'uuid'
+            }
         ],
         'responses': {
-            '200': {'description': 'Indexed successfully', 'schema': {
-                'properties': {'message': {'type': 'string'}, 'chunks': {'type': 'integer'},
-                               'conversation_id': {'type': 'string'}}}},
-            '400': {'description': 'Invalid request', 'schema': {'properties': {'error': {'type': 'string'}}}},
-            '500': {'description': 'Processing error', 'schema': {'properties': {'error': {'type': 'string'}}}}
+            '200': {
+                'description': 'File indexed successfully',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string', 'example': 'File indexed successfully'},
+                        'chunks': {'type': 'integer', 'example': 50},
+                        'conversation_id': {'type': 'string', 'format': 'uuid',
+                                            'example': '123e4567-e89b-12d3-a456-426614174000'}
+                    }
+                }
+            },
+            '400': {
+                'description': 'Invalid request (e.g., missing file or invalid conversation ID)',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'Invalid or missing file'}
+                    }
+                }
+            },
+            '500': {
+                'description': 'Server error during processing',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'Internal server error'}
+                    }
+                }
+            }
         }
     })
     def upload_pdf():
@@ -41,7 +78,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
 
         try:
             uuid_obj = uuid.UUID(conversation_id, version=4)
-            conversation_id = str(uuid_obj)  # Ensure it's in string format
+            conversation_id = str(uuid_obj)
         except ValueError:
             return jsonify({"error": "Conversation ID must be a valid UUID"}), 400
 
@@ -50,10 +87,39 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                 file.save(tmp.name)
                 num_chunks = process_pdf(tmp.name, es, embedder, ES_INDEX, conversation_id)
                 logger.info("num_chunks: %s", num_chunks)
+
+                es.indices.refresh(index=ES_INDEX)
+
+                full_text = retrieve_full_text_from_es(conversation_id, es, ES_INDEX)
+                if not full_text:
+                    raise ValueError("No text retrieved from Elasticsearch")
+
+                summary_prompt = (
+                    "Summarize the following text in about 3 sentences, focusing on the main themes:\n\n"
+                    f"{full_text[:5000]}"
+                )
+                summary = model.generate_content(summary_prompt)
+                if not hasattr(summary, 'text') or not summary.text:
+                    raise ValueError("Summary generation failed")
+                logger.info("summary: %s", summary.text)
+
+                question_prompt = (
+                    "Based on the following summary, generate two question prompts for user engagement. "
+                    "Format each question on a new line starting with '1.' and '2.':\n\n"
+                    f"{summary.text}"
+                )
+                questions = model.generate_content(question_prompt)
+                if not hasattr(questions, 'text') or not questions.text:
+                    raise ValueError("Question generation failed")
+
+                questions_list = [q.split('. ', 1)[1] for q in questions.text.split('\n') if q.strip()]
+
             return jsonify({
                 "message": "File indexed successfully",
                 "chunks": num_chunks,
-                "conversation_id": conversation_id
+                "conversation_id": conversation_id,
+                "summary": summary.text,
+                "questions": questions_list
             }), 200
         except Exception as e:
             logger.exception("Upload failed")
