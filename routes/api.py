@@ -94,32 +94,20 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                 if not full_text:
                     raise ValueError("No text retrieved from Elasticsearch")
 
-                summary_prompt = (
-                    "Summarize the following text in about 3 sentences, focusing on the main themes:\n\n"
+                system_prompt = (
+                    "Summarize the following text in about 3 sentences, focusing on the main themes. "
+                    "Then, generate five question prompts for user engagement, formatted on separate lines starting with '1.' and '2.'.\n"
+                    "Provide the summary first, followed by a blank line, then the questions:\n\n"
                     f"{full_text[:5000]}"
                 )
-                summary = model.generate_content(summary_prompt)
-                if not hasattr(summary, 'text') or not summary.text:
-                    raise ValueError("Summary generation failed")
-                logger.info("summary: %s", summary.text)
 
-                question_prompt = (
-                    "Based on the following summary, generate two question prompts for user engagement. "
-                    "Format each question on a new line starting with '1.' and '2.':\n\n"
-                    f"{summary.text}"
-                )
-                questions = model.generate_content(question_prompt)
-                if not hasattr(questions, 'text') or not questions.text:
-                    raise ValueError("Question generation failed")
-
-                questions_list = [q.split('. ', 1)[1] for q in questions.text.split('\n') if q.strip()]
+                response = model.generate_content(system_prompt)
 
             return jsonify({
                 "message": "File indexed successfully",
                 "chunks": num_chunks,
                 "conversation_id": conversation_id,
-                "summary": summary.text,
-                "questions": questions_list
+                "answer": response.text,
             }), 200
         except Exception as e:
             logger.exception("Upload failed")
