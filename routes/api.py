@@ -98,7 +98,8 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     "Summarize the following text in about 3 sentences, focusing on the main themes. "
                     "Then, generate five question prompts for user engagement, formatted on separate lines starting with '1.' and '2.'.\n"
                     "Provide the summary first, followed by a blank line, then the questions:\n\n"
-                    f"{full_text[:5000]}"
+                    "Detect the language of the current text below and respond in that language (e.g., Vietnamese text → Vietnamese answer).\n"
+                    f"{full_text[:1000]}"
                 )
 
                 response = model.generate_content(system_prompt)
@@ -122,12 +123,52 @@ def register_routes(app, es, embedder, model, ES_INDEX):
         'summary': 'Query the processed PDF',
         'description': 'Submits a question and retrieves an answer using Gemini.',
         'consumes': ['application/json'],
-        'parameters': [{'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'query': {'type': 'string'}}, 'required': ['query']}},
-                       {'name': 'body', 'in': 'body', 'required': True, 'schema': {'properties': {'history': {'type': 'string'}}, 'required': ['history']}}],
+        'parameters': [
+            {
+                'name': 'body',
+                'in': 'body',
+                'required': True,
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'query': {'type': 'string'},
+                        'history': {'type': 'string'}
+                    },
+                    'required': ['query']
+                }
+            }
+        ],
         'responses': {
-            '200': {'description': 'Successful response', 'schema': {'properties': {'answer': {'type': 'string'}, 'matched_chunks': {'type': 'array'}, 'scores': {'type': 'array'}, 'ids': {'type': 'array'}}}},
-            '400': {'description': 'Invalid request', 'schema': {'properties': {'error': {'type': 'string'}}}},
-            '500': {'description': 'Error processing query', 'schema': {'properties': {'error': {'type': 'string'}}}}
+            '200': {
+                'description': 'Successful response',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'answer': {'type': 'string'},
+                        'matched_chunks': {'type': 'array', 'items': {'type': 'string'}},
+                        'scores': {'type': 'array', 'items': {'type': 'number'}},
+                        'ids': {'type': 'array', 'items': {'type': 'string'}}
+                    }
+                }
+            },
+            '400': {
+                'description': 'Invalid request',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string'}
+                    }
+                }
+            },
+            '500': {
+                'description': 'Error processing query',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string'}
+                    }
+                }
+            }
         }
     })
     def query():
@@ -155,7 +196,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             res = es.search(index=ES_INDEX, body=body)
             hits = res['hits']['hits']
 
-            relevance_threshold = 0.6
+            relevance_threshold = 2.5
             matched = []
             for i, h in enumerate(hits):
                 if h['_score'] >= relevance_threshold:
@@ -165,7 +206,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
 
             matched.sort(key=lambda x: x['score'], reverse=True)
-            max_excerpts = 10
+            max_excerpts = 7
             matched = matched[:max_excerpts]
 
             context = "\n".join([f"- [{m['id']}] (Page {m['page']}): {m['text']}" for m in matched])
@@ -197,7 +238,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             return jsonify({
                 "answer": answer,
                 "cited_excerpts": [
-                    {"id": e['id'], "text": e['text'], "page": e['page'], "spans": e['spans'], "score": e['score']}
+                    {"id": e['id'], "text": e['text'], "page": e['page'], "score": e['score']}
                     for e in cited_excerpts
                 ]
             }), 200
