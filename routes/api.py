@@ -375,7 +375,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             logger.exception("Summarization failed")
             return jsonify({"error": str(e)}), 500
 
-    @app.route('/generate_mindmap', methods=['POST'])
+    @app.route('/mindmap', methods=['POST'])
     @swag_from({
         'tags': ['RAG Pipeline'],
         'summary': 'Upload a PDF file to generate a mind map',
