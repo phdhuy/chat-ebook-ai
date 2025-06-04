@@ -213,7 +213,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
 
             matched.sort(key=lambda x: x['score'], reverse=True)
-            max_excerpts = 7
+            max_excerpts = 5
             matched = matched[:max_excerpts]
 
             context = "\n".join([f"- [{m['id']}] (Page {m['page']}): {m['text']}" for m in matched])
