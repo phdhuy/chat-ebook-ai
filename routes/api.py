@@ -133,9 +133,10 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     'type': 'object',
                     'properties': {
                         'query': {'type': 'string'},
-                        'history': {'type': 'string'}
+                        'history': {'type': 'string'},
+                        'conversation_id': {'type': 'string'}
                     },
-                    'required': ['query']
+                    'required': ['query', 'conversation_id']
                 }
             }
         ],
@@ -176,8 +177,13 @@ def register_routes(app, es, embedder, model, ES_INDEX):
         data = request.get_json() or {}
         q = data.get('query')
         history = data.get('history', '')
+        conversation_id = data.get('conversation_id')
+
         if not q:
             return jsonify({"error": "Query is required"}), 400
+        if not conversation_id:
+            return jsonify({"error": "Conversation ID is required"}), 400
+
         try:
             q_vec = embedder.encode([q], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
 
@@ -200,7 +206,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             relevance_threshold = 2.5
             matched = []
             for i, h in enumerate(hits):
-                if h['_score'] >= relevance_threshold:
+                if h['_score'] >= relevance_threshold and h['_source']['conversation_id'] == conversation_id:
                     chunk = h['_source']['chunk']
                     page = h['_source'].get('page', 'Unknown')
                     spans = h['_source'].get('spans', [])
