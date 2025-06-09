@@ -353,7 +353,7 @@ def register_routes(app, es, embedder, model, ES_INDEX):
 
             user_message = (
                 "Please summarize the following eBook excerpt in 4–8 sentences, "
-                "including page citations like [Page X] for any facts you pull directly. "
+                "including page citations like [X] for any facts you pull directly. "
                 "Focus on the main ideas and avoid excessive detail.\n\n"
                 f"eBook Content:\n{context}\n\n"
                 "====\nSummary:"

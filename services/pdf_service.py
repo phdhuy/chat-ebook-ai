@@ -5,6 +5,7 @@ import logging
 from PIL import Image, ImageEnhance, ImageFilter
 from pdf2image import convert_from_path
 import pytesseract
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,10 @@ def process_pdf(filepath, es, embedder, ES_INDEX, conversation_id):
 
     actions = []
     for i, vec in enumerate(embeds):
+        unique_id = str(uuid.uuid4())
         actions.append({
             "_index": ES_INDEX,
-            "_id": i,
+            "_id": unique_id,
             "_source": {
                 "chunk": chunks[i]["text"],
                 "page": chunks[i]["page"],
