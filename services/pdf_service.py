@@ -20,7 +20,7 @@ def preprocess_image_for_ocr(image):
     image = image.resize((int(image.width * 1.5), int(image.height * 1.5)), Image.LANCZOS)
     return image
 
-def process_pdf(filepath, es, embedder, ES_INDEX, conversation_id):
+def process_pdf(filepath, es, embedder, ES_INDEX, conversation_id, return_chunks=False):
     text_by_page = []
     try:
         doc = fitz.open(filepath)
@@ -47,7 +47,7 @@ def process_pdf(filepath, es, embedder, ES_INDEX, conversation_id):
     if not text_by_page:
         raise ValueError("No extractable text found in PDF.")
 
-    chunk_size, overlap = 5, 2
+    chunk_size, overlap = 18, 1
     chunks = []
     for page_data in text_by_page:
         page_num = page_data["page"]
@@ -62,7 +62,12 @@ def process_pdf(filepath, es, embedder, ES_INDEX, conversation_id):
                 break
     logger.info(f"Created {len(chunks)} chunks")
 
-    embeds = embedder.encode([chunk["text"] for chunk in chunks], convert_to_tensor=False, normalize_embeddings=True)
+    batch_size = 50
+    embeds = []
+    for i in range(0, len(chunks), batch_size):
+        batch_texts = [chunk["text"] for chunk in chunks[i:i + batch_size]]
+        batch_embeds = embedder.encode(batch_texts, convert_to_tensor=False, normalize_embeddings=True)
+        embeds.extend(batch_embeds)
     dimension = len(embeds[0])
 
     if not es.indices.exists(index=ES_INDEX):
@@ -92,7 +97,11 @@ def process_pdf(filepath, es, embedder, ES_INDEX, conversation_id):
                 "embedding": vec.tolist()
             }
         })
-    bulk(es, actions)
+    bulk_size = 200
+    for i in range(0, len(actions), bulk_size):
+        bulk(es, actions[i:i + bulk_size])
     logger.info(f"Indexed {len(actions)} documents into '{ES_INDEX}' with conversation_id={conversation_id}")
 
+    if return_chunks:
+        return chunks
     return len(chunks)
