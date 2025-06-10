@@ -2,7 +2,7 @@ from flask import request, jsonify
 from flasgger import swag_from
 import logging
 from services.pdf_service import allowed_file, process_pdf
-from services.elasticsearch_service import get_embedding_dimension, retrieve_full_text_from_es
+from services.elasticsearch_service import get_embedding_dimension
 import tempfile
 import os
 import re
@@ -87,14 +87,10 @@ def register_routes(app, es, embedder, model, ES_INDEX):
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
                 file.save(tmp.name)
-                num_chunks = process_pdf(tmp.name, es, embedder, ES_INDEX, conversation_id)
-                logger.info("num_chunks: %s", num_chunks)
-
-                es.indices.refresh(index=ES_INDEX)
-
-                full_text = retrieve_full_text_from_es(conversation_id, es, ES_INDEX)
+                chunks = process_pdf(tmp.name, es, embedder, ES_INDEX, conversation_id, return_chunks=True)
+                full_text = " ".join([chunk["text"] for chunk in chunks])
                 if not full_text:
-                    raise ValueError("No text retrieved from Elasticsearch")
+                    raise ValueError("No text available for summarization")
 
                 system_prompt = (
                     "Summarize the following text in about 3 sentences, focusing on the main themes. "
@@ -107,7 +103,6 @@ def register_routes(app, es, embedder, model, ES_INDEX):
 
             return jsonify({
                 "message": "File indexed successfully",
-                "chunks": num_chunks,
                 "conversation_id": conversation_id,
                 "answer": response.text,
             }), 200
