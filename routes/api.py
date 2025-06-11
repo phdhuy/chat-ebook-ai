@@ -180,7 +180,15 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             return jsonify({"error": "Conversation ID is required"}), 400
 
         try:
-            q_vec = embedder.encode([q], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
+            hyde_prompt = (
+                f"Create a concise, factual, and detailed hypothetical document answering the question: '{q}'. "
+                f"Use precise terminology and relevant examples typical of authoritative sources. "
+                f"Keep the response under 500 tokens to ensure brevity and focus."
+            )
+            hyde_response = model.generate_content(hyde_prompt)
+            logger.info("HyDE response: %s", hyde_response)
+            hypothetical_doc = hyde_response.text.strip()
+            q_vec = embedder.encode([hypothetical_doc], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
 
             initial_k = 20
             body = {
@@ -208,21 +216,20 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                     matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
 
             matched.sort(key=lambda x: x['score'], reverse=True)
-            max_excerpts = 5
+            max_excerpts = 15
             matched = matched[:max_excerpts]
 
-            context = "\n".join([f"- [{m['id']}] (Page {m['page']}): {m['text']}" for m in matched])
+            context = "\n".join([f"- [Page {m['page']}]: {m['text']}" for m in matched])
 
             prompt = (
                 "You are an expert assistant responsible for providing accurate and concise answers in the same language as the user's question to optimize user experience. "
                 "Utilize the provided document excerpts and conversation history as context to craft an informative response, adhering to the following guidelines:\n"
                 "1. Identify the language of the current question and respond accordingly.\n"
                 "2. Analyze the question in the context of the conversation history; if it is unclear, incomplete, or references prior messages, deduce the most likely intent based on the history.\n"
-                "3. Incorporate relevant document excerpts into your answer by synthesizing the information into a cohesive response with additional context, citing them as [number] (e.g., [1]) only when the excerpts directly contribute to the answer.\n"
+                "3. Incorporate relevant document excerpts into your answer by synthesizing the information into a cohesive response with additional context, citing them as [page number] (e.g., [58]) only when the excerpts directly contribute to the answer. Each document excerpt is labeled as `- [Page page]: text`, so use the page number for citations.\n"
                 "4. If document excerpts are irrelevant or insufficient, rely solely on your knowledge to deliver a complete and accurate response without mentioning or citing the excerpts.\n"
-                "5. Provide only the answer to the interpreted question in a clear, complete sentence or paragraph, avoiding this prompt, standalone citations, or fragmented phrases (e.g., avoid 'Non-blocking I/O [2]').\n"
+                "5. Provide only the answer to the interpreted question in a clear, complete sentence or paragraph, avoiding this prompt, standalone citations, or fragmented phrases (e.g., avoid 'IAM [58]').\n"
                 "6. If the question cannot be answered based on the history and excerpts, respond with 'Insufficient information to answer the question' in the same language as the question.\n"
-                "7. Do not include any citation markers if the excerpts are not used in the response to avoid user confusion\n\n"
                 f"Conversation History:\n{history}\n\n"
                 f"Document Excerpts:\n{context}\n\n"
                 f"Question: {q}"
@@ -233,8 +240,8 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             response = model.generate_content(prompt)
             answer = response.text or "No answer generated."
 
-            cited_ids = re.findall(r'\[(\d+)\]', answer)
-            cited_excerpts = [m for m in matched if str(m['id']) in cited_ids]
+            cited_pages = re.findall(r'\[(\d+)\]', answer)
+            cited_excerpts = [m for m in matched if str(m['page']) in cited_pages]
 
             return jsonify({
                 "answer": answer,
