@@ -9,6 +9,12 @@ import re
 import uuid
 import fitz
 import json
+from ragas.metrics import faithfulness, answer_similarity, context_precision, answer_relevancy, answer_correctness
+from ragas import evaluate
+from datasets import Dataset
+from ragas.llms import LangchainLLMWrapper
+from ragas.embeddings import LangchainEmbeddingsWrapper
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
 logger = logging.getLogger("chat-ebook-ai")
 
@@ -166,17 +172,16 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             }
         }
     })
-    def query():
-        data = request.get_json() or {}
-        q = data.get('query')
-        history = data.get('history', '')
-        conversation_id = data.get('conversation_id')
+    def query_rag(query="", history="", conversation_id=""):
+        # data = request.get_json() or {}
+        # q = data.get('query')
+        # history = data.get('history', '')
+        # conversation_id = data.get('conversation_id')
+
+        q = query
 
         if not q:
             return jsonify({"error": "Query is required"}), 400
-        if not conversation_id:
-            return jsonify({"error": "Conversation ID is required"}), 400
-
         try:
             hyde_prompt = (
                 f"Create a concise, factual, and detailed hypothetical document answering the question: '{q}'. "
@@ -207,11 +212,18 @@ def register_routes(app, es, embedder, model, ES_INDEX):
             relevance_threshold = 2.5
             matched = []
             for i, h in enumerate(hits):
-                if h['_score'] >= relevance_threshold and h['_source']['conversation_id'] == conversation_id:
-                    chunk = h['_source']['chunk']
-                    page = h['_source'].get('page', 'Unknown')
-                    spans = h['_source'].get('spans', [])
-                    matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
+                if conversation_id:
+                    if h['_score'] >= relevance_threshold and h['_source']['conversation_id'] == conversation_id:
+                        chunk = h['_source']['chunk']
+                        page = h['_source'].get('page', 'Unknown')
+                        spans = h['_source'].get('spans', [])
+                        matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
+                else:
+                    if h['_score'] >= relevance_threshold:
+                        chunk = h['_source']['chunk']
+                        page = h['_source'].get('page', 'Unknown')
+                        spans = h['_source'].get('spans', [])
+                        matched.append({"id": i + 1, "text": chunk, "page": page, "spans": spans, "score": h['_score']})
 
             matched.sort(key=lambda x: x['score'], reverse=True)
             max_excerpts = 15
@@ -575,3 +587,259 @@ def register_routes(app, es, embedder, model, ES_INDEX):
                 doc.close()
             if os.path.exists(filepath):
                 os.remove(filepath)
+
+    @app.route('/evaluate', methods=['POST'])
+    @swag_from({
+        'tags': ['RAG Pipeline'],
+        'summary': 'Evaluate RAG retrieval and generation performance',
+        'description': (
+                'Runs a suite of predefined queries through the RAG pipeline, compares the generated answers '
+                'against ground-truth, and computes evaluation metrics: faithfulness, answer similarity, and context precision.'
+        ),
+        'consumes': ['application/json'],
+        'responses': {
+            '200': {
+                'description': 'Evaluation completed successfully',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'faithfulness': {'type': 'number', 'format': 'float'},
+                        'answer_similarity': {'type': 'number', 'format': 'float'},
+                        'context_precision': {'type': 'number', 'format': 'float'}
+                    }
+                }
+            },
+            '500': {
+                'description': 'Internal server error during evaluation',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string', 'example': 'Internal server error'}
+                    }
+                }
+            }
+        }
+    })
+    def evaluate_rag():
+        google_api_key = os.getenv("GEMINI_API_KEY")
+        if not google_api_key:
+            logger.error("GEMINI_API_KEY environment variable not set")
+            return jsonify({
+                "error": "GEMINI_API_KEY environment variable not set. Get your key from https://makersuite.google.com/app/apikey"}), 500
+
+        try:
+            gemini_llm = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash",
+                google_api_key=google_api_key,
+                temperature=0.1,
+                max_output_tokens=2048,
+                top_k=40,
+                top_p=0.95
+            )
+
+            # Setup Gemini Embeddings
+            gemini_embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/text-embedding-004",  # Use a more stable embedding model
+                google_api_key=google_api_key
+            )
+
+            ragas_llm = LangchainLLMWrapper(gemini_llm)
+            ragas_embeddings = LangchainEmbeddingsWrapper(gemini_embeddings)
+
+            logger.info("Gemini LLM and embeddings initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini: {str(e)}")
+            return jsonify({"error": f"Failed to initialize Gemini: {str(e)}"}), 500
+
+        # Expanded evaluation questions and ground truth answers for better evaluation
+        eval_questions = [
+            # "What is the main disadvantage of using a separator-based storage format, such as CSV, in a database engine?",
+            # "How does a fixed-size row storage format improve performance compared to a separator-based format?",
+            # "What is a significant drawback of using fixed-size rows in a real database system?",
+            # "What does TLV stand for, and what are the three components it represents?",
+            "In the context of TLV encoding, how is an integer value like 3894 represented, assuming it is stored as an 8-byte integer?",
+            "Why is a byte-by-byte scanning algorithm inefficient for large tables, and how does a row-by-row approach address this?"
+        ]
+        eval_answers = [
+            # "The main disadvantage of a separator-based storage format, like CSV, is its slow performance due to linear time complexity, O(n). The engine must iterate through the data byte-by-byte because it does not know the length of rows or individual columns, leading to potentially millions of iterations for large datasets (e.g., 500MB table requiring up to 500,000,000 iterations).",
+            # "A fixed-size row storage format improves performance by allowing the database engine to scan the table row-by-row instead of byte-by-byte. This reduces the number of iterations significantly (e.g., a 640MB table with 4 million rows requires 4 million iterations instead of 640 million), offering up to a 160x performance improvement.",
+            # "A significant drawback of fixed-size rows is the large space requirement for text-based columns. In real database systems, columns like varchar (255 bytes), text (65,535 bytes), mediumtext (16,777,215 bytes), or longtext (4,294,967,295 bytes) can lead to substantial storage overhead, as each row must reserve the maximum possible size for these columns.",
+            # "TLV stands for Type-Length-Value. The three components are: Type: Indicates the data type (e.g., 1 for integer, 2 for string). Length: Specifies the size of the value in bytes (e.g., 8 bytes for an integer). Value: The actual data being stored (e.g., 3894 for an integer or hello for a string).",
+            "In TLV encoding, the integer value 3894 is represented as: Type: 1 (indicating an integer). Length: 8 (indicating 8 bytes). Value: 3894 (stored in little-endian binary format, occupying 8 bytes).",
+            "A byte-by-byte scanning algorithm is inefficient because it requires examining every byte of a table, leading to O(n) complexity and potentially billions of iterations for large tables (e.g., 640MB). A row-by-row approach, enabled by fixed-size or TLV formats, reduces iterations by processing entire rows at once, significantly lowering the computational cost (e.g., 4 million iterations for 4 million rows)."
+        ]
+
+        # Log all evaluation questions and expected answers
+        logger.info("=== EVALUATION QUESTIONS AND EXPECTED ANSWERS ===")
+        for i, (question, expected_answer) in enumerate(zip(eval_questions, eval_answers), 1):
+            logger.info(f"Q{i}: {question}")
+            logger.info(f"Expected A{i}: {expected_answer}")
+            logger.info("-" * 80)
+
+        eval_data = []
+        successful_queries = 0
+        failed_queries = 0
+
+        # Process each evaluation query
+        for i, (query, ground_truth) in enumerate(zip(eval_questions, eval_answers), 1):
+            try:
+                logger.info(f"Processing evaluation query {i}/{len(eval_questions)}: {query}")
+
+                # Query the RAG system
+                response, status_code = query_rag(query)
+
+                if status_code != 200:
+                    error_msg = "Unknown error"
+                    try:
+                        error_msg = response.get_json().get('error', 'Unknown error')
+                    except:
+                        pass
+                    logger.error(f"Query {i} '{query}' failed with status {status_code}: {error_msg}")
+                    failed_queries += 1
+                    continue
+
+                # Extract response data
+                data = response.get_json()
+                answer = data.get("answer", "No answer generated")
+                cited_excerpts = data.get("cited_excerpts", [])
+
+                # Log the actual RAG response for this question
+                logger.info(f"RAG Response for Q{i}:")
+                logger.info(f"Answer: {answer}")
+                logger.info(f"Number of cited excerpts: {len(cited_excerpts)}")
+
+                # Process contexts from cited excerpts
+                if not isinstance(cited_excerpts, list):
+                    logger.warning(f"cited_excerpts for query {i} '{query}' is not a list: {cited_excerpts}")
+                    contexts = []
+                else:
+                    contexts = [excerpt["text"] for excerpt in cited_excerpts if
+                                isinstance(excerpt, dict) and "text" in excerpt]
+
+                # Log contexts
+                logger.info(f"Contexts for Q{i}: {len(contexts)} context(s) found")
+                for j, context in enumerate(contexts, 1):
+                    logger.info(f"Context {j}: {context[:200]}...")
+
+                # Ensure we have meaningful contexts for evaluation
+                if not contexts:
+                    logger.warning(f"No valid contexts found for query {i} '{query}', skipping this query")
+                    failed_queries += 1
+                    continue
+
+                # Validate that answer and contexts are meaningful
+                if len(answer.strip()) < 10:
+                    logger.warning(f"Answer too short for query {i} '{query}', skipping")
+                    failed_queries += 1
+                    continue
+
+                # Create evaluation entry
+                eval_entry = {
+                    "question": query,
+                    "answer": answer,
+                    "contexts": contexts,
+                    "ground_truth": ground_truth
+                }
+
+                eval_data.append(eval_entry)
+                successful_queries += 1
+                logger.info(f"Successfully processed query {i}: {query}")
+                logger.info("=" * 80)
+
+            except Exception as e:
+                logger.error(f"Error processing query {i} '{query}': {str(e)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                failed_queries += 1
+                continue
+
+        # Check if we have any evaluation data
+        logger.info(f"Successfully processed {len(eval_data)} evaluation queries")
+        if not eval_data:
+            logger.error("No evaluation data collected - all queries failed")
+            return jsonify({"error": "No evaluation data collected - all queries failed"}), 400
+
+        if len(eval_data) < 2:
+            logger.warning(f"Only {len(eval_data)} evaluation samples collected. Results may not be reliable.")
+
+        logger.info(f"Collected {len(eval_data)} evaluation entries")
+
+        try:
+            # Convert list to Dataset object
+            logger.info("Converting evaluation data to Dataset...")
+            dataset = Dataset.from_list(eval_data)
+
+            # Validate dataset
+            required_columns = ["question", "answer", "contexts", "ground_truth"]
+            missing_columns = [col for col in required_columns if col not in dataset.column_names]
+            if missing_columns:
+                logger.error(f"Missing required columns in dataset: {missing_columns}")
+                return jsonify({"error": f"Missing required columns: {missing_columns}"}), 400
+
+            logger.info(f"Dataset created successfully with columns: {dataset.column_names}")
+            logger.info(f"Dataset size: {len(dataset)} samples")
+
+            # Log sample data for debugging
+            if len(dataset) > 0:
+                sample = dataset[0]
+                logger.info(f"Sample data - Question: {sample['question'][:100]}...")
+                logger.info(f"Sample data - Answer: {sample['answer'][:100]}...")
+                logger.info(f"Sample data - Contexts count: {len(sample['contexts'])}")
+                logger.info(f"Sample data - Ground truth: {sample['ground_truth'][:100]}...")
+
+            # Perform RAGAS evaluation with Gemini
+            logger.info("Starting RAGAS evaluation with Gemini...")
+            logger.info("This may take a few minutes depending on the data size...")
+
+            # Use a more robust set of metrics
+            evaluation_metrics = [faithfulness, answer_relevancy, context_precision, answer_correctness]
+
+            results = evaluate(
+                dataset=dataset,
+                metrics=evaluation_metrics,
+                llm=ragas_llm,
+                embeddings=ragas_embeddings,
+            )
+
+            logger.info("RAGAS evaluation completed successfully")
+
+            # Enhanced logging of raw results with question-answer pairs
+            logger.info("=== RAW EVALUATION RESULTS ===")
+            logger.info(f"Raw evaluation results object: {results}")
+            logger.info(f"Results type: {type(results)}")
+
+            # Log individual results for each question if available
+            if hasattr(results, 'to_pandas'):
+                df = results.to_pandas()
+                logger.info(f"Results DataFrame shape: {df.shape}")
+                logger.info(f"Results DataFrame columns: {df.columns.tolist()}")
+
+                # Log results for each question
+                for idx, row in df.iterrows():
+                    logger.info(f"--- Results for Question {idx + 1} ---")
+                    logger.info(f"Question: {eval_questions[idx] if idx < len(eval_questions) else 'N/A'}")
+                    logger.info(f"Expected Answer: {eval_answers[idx][:100] if idx < len(eval_answers) else 'N/A'}...")
+                    if 'answer' in row:
+                        logger.info(f"RAG Answer: {str(row['answer'])[:100]}...")
+                    for col in df.columns:
+                        if col in ['faithfulness', 'answer_relevancy', 'context_precision', 'answer_correctness']:
+                            logger.info(f"{col}: {row[col]}")
+                    logger.info("-" * 60)
+        except Exception as e:
+            logger.error(f"Error during RAGAS evaluation: {str(e)}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+
+            # Provide more specific error messages
+            error_msg = str(e)
+            if "api" in error_msg.lower() and "key" in error_msg.lower():
+                error_msg = "Google API key issue. Please check your GOOGLE_API_KEY environment variable."
+            elif "quota" in error_msg.lower() or "limit" in error_msg.lower():
+                error_msg = "API quota exceeded. Please check your Google API usage limits."
+            elif "timeout" in error_msg.lower():
+                error_msg = "Request timeout. The evaluation might be taking too long - try with fewer questions."
+            elif "json" in error_msg.lower() and "serializable" in error_msg.lower():
+                error_msg = "Result serialization error. The evaluation completed but results couldn't be formatted properly."
+
+            return jsonify({"error": f"RAGAS evaluation failed: {error_msg}"}), 500
