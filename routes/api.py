@@ -94,8 +94,6 @@ def register_routes(app, es, embedder, model, ES_INDEX):
 
                 system_prompt = (
                     "Summarize the following text in about 3 sentences, focusing on the main themes. "
-                    "Then, generate five question prompts for user engagement, formatted on separate lines starting with '1.' and '2.'.\n"
-                    "Provide the summary first, followed by a blank line, then the questions:\n\n"
                     f"{full_text[:1000]}"
                 )
 
