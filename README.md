@@ -37,7 +37,7 @@ This ensures that the answers are grounded in the actual content of the document
 
 The following diagram illustrates the architecture of the RAG flow used in this project:
 
-![RAG Flow Architecture](path/to/architecture_diagram.png)  
+![RAG Flow Architecture](/rag-pipeline.png)  
 
 The system follows a step-by-step process to handle PDF uploads, process user queries, and generate responses:
 
