@@ -13,3 +13,6 @@ nltk
 pillow
 elasticsearch==8.15.0
 python-logging-loki
+ragas
+datasets
+langchain-google-genai
