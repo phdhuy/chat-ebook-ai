@@ -8,15 +8,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Copy dependency files
+COPY pyproject.toml ./
 
+# Install dependencies using pip
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt --resume-retries 5
+    pip install --no-cache-dir fastapi uvicorn pydantic langchain sentence-transformers elasticsearch python-multipart dependency-injector python-dotenv pymupdf pdf2image pytesseract pillow nltk google-generativeai
 
+# Download NLTK data
 RUN python -m nltk.downloader punkt
 
+# Copy source code
 COPY . .
 
-EXPOSE 5000
+EXPOSE 8000
 
-CMD ["python", "app.py"]
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feature/**"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  code-quality:
+    name: Check coding standards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install poetry
+        run: pipx install poetry
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: poetry
+
+      - name: Install Python dependencies
+        run: poetry install --with dev --no-root
+
+      - name: Check code formatting
+        run: poetry run poe format-check
+
+      - name: Run linting
+        run: poetry run poe ruff-check
+
+      - name: Run type checking
+        run: poetry run poe mypy-check
+
+  test:
+    name: Run tests
+    needs: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install poetry
+        run: pipx install poetry
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: poetry
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-root
+
+      - name: Run tests
+        run: poetry run poe test-unit
+
+      - name: Archive code coverage results
+        if: always() # Ensure artifact is uploaded even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: htmlcov
