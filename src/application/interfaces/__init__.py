@@ -22,5 +22,7 @@ class ILLMService(ABC):
 
 class IPDFProcessor(ABC):
     @abstractmethod
-    async def process_pdf(self, file_content: bytes, filename: str) -> List[Dict[str, Any]]:
+    async def process_pdf(
+        self, file_content: bytes, filename: str
+    ) -> List[Dict[str, Any]]:
         pass

@@ -1,20 +1,20 @@
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from src.application.interactors.query_rag_interactor import QueryRAGInteractor
 from src.application.interactors.upload_pdf_interactor import UploadPDFInteractor
-from src.application.interfaces import ILLMService, IVectorStore, IPDFProcessor
+from src.application.interfaces import ILLMService, IPDFProcessor, IVectorStore
 from src.domain.entities.schemas import (
     QueryRequest,
     QueryResponse,
-    UploadRequest,
     UploadResponse,
 )
 from src.main.ioc.container import (
     get_llm_service,
-    get_vector_store,
     get_pdf_processor,
+    get_vector_store,
 )
 
 router = APIRouter()
@@ -26,7 +26,7 @@ async def query_rag(
     request: QueryRequest,
     vector_store: IVectorStore = Depends(get_vector_store),
     llm_service: ILLMService = Depends(get_llm_service),
-):
+) -> QueryResponse:
     interactor = QueryRAGInteractor(vector_store, llm_service)
     try:
         result = await interactor.execute(
@@ -44,14 +44,12 @@ async def query_rag(
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_pdf(
+    conversation_id: str,
     file: UploadFile = File(...),
-    conversation_id: str = None,
     pdf_processor: IPDFProcessor = Depends(get_pdf_processor),
     vector_store: IVectorStore = Depends(get_vector_store),
     llm_service: ILLMService = Depends(get_llm_service),
-):
-    if not conversation_id:
-        raise HTTPException(status_code=400, detail="Conversation ID is required")
+) -> UploadResponse:
 
     try:
         # Read file content

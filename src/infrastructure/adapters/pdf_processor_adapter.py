@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 import fitz
 import nltk
 from sentence_transformers import SentenceTransformer
@@ -16,7 +17,9 @@ class PDFProcessorAdapter(IPDFProcessor):
     def _allowed_file(self, filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() == "pdf"
 
-    async def process_pdf(self, file_content: bytes, filename: str) -> List[Dict[str, Any]]:
+    async def process_pdf(
+        self, file_content: bytes, filename: str
+    ) -> List[Dict[str, Any]]:
         if not self._allowed_file(filename):
             raise ValueError("Invalid file type. Please upload a PDF")
 
@@ -68,6 +71,6 @@ class PDFProcessorAdapter(IPDFProcessor):
 
             return chunks
 
-        except Exception as e:
+        except Exception:
             logger.exception("PDF processing failed")
             raise

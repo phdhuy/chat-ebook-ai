@@ -1,8 +1,7 @@
 import logging
-from typing import Dict, Any, List
-from uuid import uuid4
+from typing import Any, Dict
 
-from src.application.interfaces import IVectorStore, ILLMService, IPDFProcessor
+from src.application.interfaces import ILLMService, IPDFProcessor, IVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +46,6 @@ class UploadPDFInteractor:
                 "summary": summary,
             }
 
-        except Exception as e:
+        except Exception:
             logger.exception("PDF upload failed")
             raise

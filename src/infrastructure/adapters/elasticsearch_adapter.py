@@ -31,7 +31,8 @@ class ElasticsearchAdapter(IVectorStore):
             },
         }
         res = await self.es.search(index=self.index, body=body)
-        return res["hits"]["hits"]
+        hits = res.get("hits", {}).get("hits", [])
+        return hits if isinstance(hits, list) else []
 
     async def index(self, chunks: List[Dict[str, Any]], conversation_id: str) -> int:
         # Simplified indexing
