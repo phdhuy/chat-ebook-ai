@@ -1,10 +1,12 @@
 import os
 import sys
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from unittest.mock import AsyncMock
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.application.interactors.query_rag_interactor import QueryRAGInteractor
 from src.domain.entities.schemas import QueryRequest

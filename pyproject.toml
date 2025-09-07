@@ -3,6 +3,7 @@ name = "chat-ebook-ai"
 version = "0.1.0"
 description = "AI-powered RAG backend for eBook chat"
 authors = ["Your Name <your.email@example.com>"]
+packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -62,7 +63,7 @@ ignore = [
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**/*" = ["B011"]  # assert false
+"tests/**/*" = ["B011", "E402"]  # assert false, module level import not at top of file
 
 [tool.mypy]
 python_version = "3.9"

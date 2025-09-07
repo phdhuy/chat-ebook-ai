@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
@@ -30,7 +29,7 @@ async def query_rag(
     interactor = QueryRAGInteractor(vector_store, llm_service)
     try:
         result = await interactor.execute(
-            request.query, request.history, request.conversation_id
+            request.query, request.history or "", request.conversation_id
         )
         return QueryResponse(
             answer=result["answer"], cited_excerpts=result["cited_excerpts"]
@@ -50,7 +49,6 @@ async def upload_pdf(
     vector_store: IVectorStore = Depends(get_vector_store),
     llm_service: ILLMService = Depends(get_llm_service),
 ) -> UploadResponse:
-
     try:
         # Read file content
         file_content = await file.read()
