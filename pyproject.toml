@@ -83,12 +83,14 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "sentence_transformers.*",
+    "google.*",
     "google.generativeai.*",
     "elasticsearch.*",
     "pymupdf.*",
     "pdf2image.*",
     "pytesseract.*",
     "nltk.*",
+    "fitz.*",
 ]
 ignore_missing_imports = true
 

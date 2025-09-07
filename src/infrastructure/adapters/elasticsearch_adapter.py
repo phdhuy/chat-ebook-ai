@@ -8,7 +8,7 @@ from src.application.interfaces import IVectorStore
 class ElasticsearchAdapter(IVectorStore):
     def __init__(self, es_client: AsyncElasticsearch, index: str):
         self.es = es_client
-        self.index = index
+        self.index_name = index
 
     async def search(
         self, query_vector: List[float], conversation_id: str, k: int = 10
@@ -30,7 +30,7 @@ class ElasticsearchAdapter(IVectorStore):
                 }
             },
         }
-        res = await self.es.search(index=self.index, body=body)
+        res = await self.es.search(index=self.index_name, body=body)
         hits = res.get("hits", {}).get("hits", [])
         return hits if isinstance(hits, list) else []
 
@@ -50,5 +50,5 @@ class ElasticsearchAdapter(IVectorStore):
                 }
             )
         # Bulk index
-        await self.es.bulk(actions)
+        await self.es.bulk(body=actions)
         return len(actions)

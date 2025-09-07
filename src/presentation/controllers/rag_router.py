@@ -55,7 +55,9 @@ async def upload_pdf(
 
         # Execute upload interactor
         interactor = UploadPDFInteractor(pdf_processor, vector_store, llm_service)
-        result = await interactor.execute(file_content, file.filename, conversation_id)
+        result = await interactor.execute(
+            file_content, file.filename or "uploaded_file.pdf", conversation_id
+        )
 
         return UploadResponse(
             message=result["message"],
