@@ -4,7 +4,7 @@ services:
   rag-ai:
     build: .
     ports:
-      - "5000:5000"
+      - "8000:8000"
     depends_on:
       - elasticsearch
     env_file:
@@ -38,7 +38,7 @@ services:
 
 networks:
   chat-ebook-network:
-    external: true
+    driver: bridge
 
 volumes:
   esdata:
